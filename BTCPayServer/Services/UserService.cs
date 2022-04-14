@@ -16,7 +16,6 @@ namespace BTCPayServer.Services
     public class UserService
     {
         private readonly UserManager<ApplicationUser> _userManager;
-        private readonly IAuthorizationService _authorizationService;
         private readonly StoredFileRepository _storedFileRepository;
         private readonly FileService _fileService;
         private readonly StoreRepository _storeRepository;
@@ -24,7 +23,6 @@ namespace BTCPayServer.Services
 
         public UserService(
             UserManager<ApplicationUser> userManager,
-            IAuthorizationService authorizationService,
             StoredFileRepository storedFileRepository,
             FileService fileService,
             StoreRepository storeRepository,
@@ -33,7 +31,6 @@ namespace BTCPayServer.Services
         )
         {
             _userManager = userManager;
-            _authorizationService = authorizationService;
             _storedFileRepository = storedFileRepository;
             _fileService = fileService;
             _storeRepository = storeRepository;
@@ -57,8 +54,29 @@ namespace BTCPayServer.Services
                 EmailConfirmed = data.EmailConfirmed,
                 RequiresEmailConfirmation = data.RequiresEmailConfirmation,
                 Created = data.Created,
-                Roles = roles
+                Roles = roles,
+                Disabled = data.LockoutEnabled && data.LockoutEnd is not null && DateTimeOffset.UtcNow < data.LockoutEnd.Value.UtcDateTime
             };
+        }
+
+        private bool IsDisabled(ApplicationUser user)
+        {
+            return user.LockoutEnabled && user.LockoutEnd is not null &&
+                   DateTimeOffset.UtcNow < user.LockoutEnd.Value.UtcDateTime;
+        }
+        public async Task ToggleUser(string userId, DateTimeOffset? lockedOutDeadline)
+        {
+            var user = await _userManager.FindByIdAsync(userId);
+            if (user is null)
+            {
+                return;
+            }
+            if (lockedOutDeadline is not null)
+            {
+                await _userManager.SetLockoutEnabledAsync(user, true);
+            }
+            
+            await _userManager.SetLockoutEndDateAsync(user, lockedOutDeadline);
         }
 
         public async Task<bool> IsAdminUser(string userId)
@@ -88,6 +106,18 @@ namespace BTCPayServer.Services
         public bool IsRoleAdmin(IList<string> roles)
         {
             return roles.Contains(Roles.ServerAdmin, StringComparer.Ordinal);
+        }
+
+
+        public async Task<bool> IsUserTheOnlyOneAdmin(ApplicationUser user)
+        {
+            var isUserAdmin = await IsAdminUser(user);
+            if (!isUserAdmin)
+            {
+                return false;
+            }
+
+            return (await _userManager.GetUsersInRoleAsync(Roles.ServerAdmin)).Count(applicationUser => !IsDisabled(applicationUser)) == 1;
         }
     }
 }

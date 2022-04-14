@@ -33,6 +33,15 @@ namespace BTCPayServer.Client
             return await HandleResponse<ApplicationUserData>(response);
         }
 
+        public virtual async Task ToggleUser(string idOrEmail, bool enabled, CancellationToken token = default)
+        {
+            var response = await _httpClient.SendAsync(CreateHttpRequest($"api/v1/users/{idOrEmail}/toggle", null,new
+            {
+                enabled
+            } , HttpMethod.Post), token);
+            await HandleResponse(response);
+        }
+
         public virtual async Task<ApplicationUserData[]> GetUsers( CancellationToken token = default)
         {
             var response = await _httpClient.SendAsync(CreateHttpRequest($"api/v1/users/", null, HttpMethod.Get), token);
